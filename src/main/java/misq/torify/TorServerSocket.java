@@ -16,20 +16,31 @@
  */
 package misq.torify;
 
-import lombok.extern.slf4j.Slf4j;
-import net.freehaven.tor.control.TorControlConnection;
-
-import javax.annotation.Nullable;
-import java.io.File;
-import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.net.ServerSocket;
+
+import java.io.File;
+import java.io.IOException;
+
 import java.util.concurrent.CountDownLatch;
 
-import static misq.torify.Constants.*;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
-@Slf4j
+import javax.annotation.Nullable;
+
+import static misq.torify.Constants.HOSTNAME;
+import static misq.torify.Constants.HS_DIR;
+import static misq.torify.Constants.LOCALHOST;
+import static misq.torify.Constants.PRIV_KEY;
+
+
+
+import net.freehaven.tor.control.TorControlConnection;
+
 public class TorServerSocket extends ServerSocket {
+    private static final Logger log = LoggerFactory.getLogger(TorServerSocket.class);
+
     public interface Listener {
         void onComplete(OnionAddress onionAddress);
 
@@ -37,21 +48,21 @@ public class TorServerSocket extends ServerSocket {
 
     }
 
-    private final TorService torService;
+    private final Torify torify;
     private final Object lock = new Object();
     @Nullable
     private OnionAddress onionAddress;
 
-    public TorServerSocket(TorService torService) throws IOException {
-        this.torService = torService;
+    public TorServerSocket(Torify torify) throws IOException {
+        this.torify = torify;
     }
 
     public void bind(int hiddenServicePort, Listener listener) {
-        bind(hiddenServicePort, hiddenServicePort, new File(torService.getTorDir(), HS_DIR), listener);
+        bind(hiddenServicePort, hiddenServicePort, new File(torify.getTorDir(), HS_DIR), listener);
     }
 
     public void bind(int hiddenServicePort, int localPort, Listener listener) {
-        bind(hiddenServicePort, localPort, new File(torService.getTorDir(), HS_DIR), listener);
+        bind(hiddenServicePort, localPort, new File(torify.getTorDir(), HS_DIR), listener);
     }
 
     public void bind(int hiddenServicePort, int localPort, File hsDir, Listener listener) {
@@ -74,7 +85,7 @@ public class TorServerSocket extends ServerSocket {
         File privKeyFile = new File(hsDir.getCanonicalPath(), PRIV_KEY);
         FileUtil.makeDirs(hsDir);
 
-        TorControlConnection torControlConnection = torService.getTorControlConnection();
+        TorControlConnection torControlConnection = torify.getTorControlConnection();
         TorControlConnection.CreateHiddenServiceResult result;
         if (privKeyFile.exists()) {
             String privateKey = FileUtil.readFromFile(privKeyFile);
@@ -101,7 +112,7 @@ public class TorServerSocket extends ServerSocket {
 
         log.debug("Start publishing hidden service {}", onionAddress);
         CountDownLatch latch = new CountDownLatch(1);
-        torService.getEventHandler().putHiddenServiceReadyListener(serviceId, () -> {
+        torify.getEventHandler().putHiddenServiceReadyListener(serviceId, () -> {
             try {
                 super.bind(new InetSocketAddress(LOCALHOST, localPort));
                 log.info(">> TorServerSocket ready. Took {} ms", System.currentTimeMillis() - ts);
@@ -118,8 +129,8 @@ public class TorServerSocket extends ServerSocket {
         super.close();
 
         if (onionAddress != null) {
-            torService.getEventHandler().removeHiddenServiceReadyListener(onionAddress.getServiceId());
-            torService.getTorControlConnection().destroyHiddenService(onionAddress.getServiceId());
+            torify.getEventHandler().removeHiddenServiceReadyListener(onionAddress.getServiceId());
+            torify.getTorControlConnection().destroyHiddenService(onionAddress.getServiceId());
         }
     }
 

@@ -22,14 +22,16 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 
-import lombok.extern.slf4j.Slf4j;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 
 
 import net.freehaven.tor.control.EventHandler;
 
-@Slf4j
 public class TorEventHandler implements EventHandler {
+    private static final Logger log = LoggerFactory.getLogger(TorEventHandler.class);
+
     private final Map<String, Runnable> hiddenServiceReadyHandler = new ConcurrentHashMap<>();
 
     public void putHiddenServiceReadyListener(String serviceId, Runnable listener) {

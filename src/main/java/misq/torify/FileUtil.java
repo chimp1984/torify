@@ -37,10 +37,12 @@ import java.io.PrintWriter;
 
 import java.util.Scanner;
 
-import lombok.extern.slf4j.Slf4j;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
-@Slf4j
 public class FileUtil {
+    private static final Logger log = LoggerFactory.getLogger(FileUtil.class);
+
     public static void makeDirs(File dir) throws IOException {
         if (!dir.exists() && !dir.mkdirs()) {
             throw new IOException("Could not make dir " + dir);
@@ -138,7 +140,8 @@ public class FileUtil {
                     if (!file.exists() && !file.mkdirs()) {
                         throw new IOException("Could not create directory. File= " + file);
                     }
-                    return;
+                    continue;
+                   // return;
                 }
 
                 if (!file.getParentFile().exists() && !file.getParentFile().mkdirs()) {

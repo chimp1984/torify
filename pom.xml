@@ -24,7 +24,6 @@
     </repositories>
 
     <dependencies>
-
         <dependency>
             <groupId>com.github.ravn</groupId>
             <artifactId>jsocks</artifactId>
@@ -37,6 +36,11 @@
             <version>1.5</version>
         </dependency>
 
+        <dependency>
+            <groupId>com.github.bisq-network.tor-binary</groupId>
+            <artifactId>tor-binary-geoip</artifactId>
+            <version>${tor-binary.version}</version>
+        </dependency>
         <dependency>
             <groupId>com.github.bisq-network.tor-binary</groupId>
             <artifactId>tor-binary-macos</artifactId>
@@ -56,6 +60,12 @@
             <groupId>com.github.bisq-network.tor-binary</groupId>
             <artifactId>tor-binary-windows</artifactId>
             <version>${tor-binary.version}</version>
+        </dependency>
+
+        <dependency>
+            <groupId>org.tukaani</groupId>
+            <artifactId>xz</artifactId>
+            <version>1.6</version>
         </dependency>
 
         <dependency>
@@ -84,17 +94,14 @@
             <artifactId>logback-classic</artifactId>
             <version>1.2.3</version>
         </dependency>
-
-
-        <dependency>
-            <groupId>org.projectlombok</groupId>
-            <artifactId>lombok</artifactId>
-            <version>1.18.18</version>
-            <scope>provided</scope>
-        </dependency>
     </dependencies>
 
     <build>
+        <resources>
+            <resource>
+                <directory>resources</directory>
+            </resource>
+        </resources>
         <plugins>
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
@@ -157,6 +164,7 @@
                         </goals>
                         <configuration>
                             <sources>
+                                <source>src/main/java</source>
                                 <source>src/main/java</source>
                             </sources>
                         </configuration>

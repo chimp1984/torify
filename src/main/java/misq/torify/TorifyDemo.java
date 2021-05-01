@@ -15,7 +15,7 @@
  * along with Bisq. If not, see <http://www.gnu.org/licenses/>.
  */
 
-package network.misq;
+package misq.torify;
 
 import com.runjva.sourceforge.jsocks.protocol.SocksSocket;
 
@@ -25,53 +25,51 @@ import java.net.InetSocketAddress;
 import java.net.Proxy;
 import java.net.Socket;
 
+import java.nio.file.Paths;
+
 import java.io.File;
 import java.io.IOException;
 import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
 
-import java.util.concurrent.TimeUnit;
+import java.util.Locale;
 import java.util.function.Consumer;
 
-import lombok.extern.slf4j.Slf4j;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
+public class TorifyDemo {
+    private static final Logger log = LoggerFactory.getLogger(TorifyDemo.class);
 
-
-import misq.torify.OnionAddress;
-import misq.torify.TorServerSocket;
-import misq.torify.TorService;
-
-@Slf4j
-public class TorServiceDemo {
-    public static void main(String[] args) {
-        String torDirPath = "/Users/dev/Library/Application Support/misq_TorNew/TorifyDemo";
-        //  useBlockingAPI(torDirPath);
+    public static void main(String[] args) throws IOException, InterruptedException {
+        String torDirPath = getUserDataDir() + "/TorifyDemo";
+        // useBlockingAPI(torDirPath);
         useNonBlockingAPI(torDirPath);
-       /* while (true) {
-        }*/
+        while (true) {
+        }
     }
 
     private static void useBlockingAPI(String torDirPath) throws IOException, InterruptedException {
-        TorService torService = new TorService(torDirPath);
-        torService.blockingStart();
-        TorServerSocket torServerSocket = startServerBlocking(torService);
+        Torify torify = new Torify(torDirPath);
+        torify.blockingStart();
+        TorServerSocket torServerSocket = startServerBlocking(torify);
         OnionAddress onionAddress = torServerSocket.getOnionAddress();
-        sendViaSocketFactory(torService, onionAddress);
-        sendViaProxy(torService, onionAddress);
-        sendViaSocket(torService, onionAddress);
-        sendViaSocksSocket(torService, onionAddress);
+        sendViaSocketFactory(torify, onionAddress);
+        sendViaProxy(torify, onionAddress);
+        sendViaSocket(torify, onionAddress);
+        sendViaSocksSocket(torify, onionAddress);
     }
 
     private static void useNonBlockingAPI(String torDirPath) {
-        TorService torService = new TorService(torDirPath);
-        torService.start(new TorService.Listener() {
+        Torify torify = new Torify(torDirPath);
+        torify.start(new Torify.Listener() {
             @Override
             public void onComplete() {
-                startServerNonBlocking(torService, onionAddress -> {
-                    sendViaSocketFactory(torService, onionAddress);
-                    sendViaProxy(torService, onionAddress);
-                    sendViaSocket(torService, onionAddress);
-                    sendViaSocksSocket(torService, onionAddress);
+                startServerNonBlocking(torify, onionAddress -> {
+                    sendViaSocketFactory(torify, onionAddress);
+                    sendViaProxy(torify, onionAddress);
+                    sendViaSocket(torify, onionAddress);
+                    sendViaSocksSocket(torify, onionAddress);
                 });
             }
 
@@ -83,11 +81,11 @@ public class TorServiceDemo {
     }
 
     // Server
-    private static TorServerSocket startServerBlocking(TorService torService) {
+    private static TorServerSocket startServerBlocking(Torify torify) {
         try {
-            TorServerSocket torServerSocket = new TorServerSocket(torService);
+            TorServerSocket torServerSocket = new TorServerSocket(torify);
             // blocking version
-            torServerSocket.blockingBind(4000, 9999, new File(torService.getTorDir(), "hiddenservice_2"));
+            torServerSocket.blockingBind(4000, 9999, new File(torify.getTorDir(), "hiddenservice_2"));
             runServer(torServerSocket);
             return torServerSocket;
         } catch (IOException | InterruptedException e) {
@@ -95,9 +93,9 @@ public class TorServiceDemo {
         }
     }
 
-    private static void startServerNonBlocking(TorService torService, Consumer<OnionAddress> resultHandler) {
+    private static void startServerNonBlocking(Torify torify, Consumer<OnionAddress> resultHandler) {
         try {
-            TorServerSocket torServerSocket = new TorServerSocket(torService);
+            TorServerSocket torServerSocket = new TorServerSocket(torify);
             torServerSocket.bind(3000, new TorServerSocket.Listener() {
                 @Override
                 public void onComplete(OnionAddress onionAddress) {
@@ -121,7 +119,6 @@ public class TorServiceDemo {
                 try {
                     log.info("Start listening for new connections on {}", torServerSocket.getOnionAddress());
                     Socket clientSocket = torServerSocket.accept();
-                    clientSocket.setSoTimeout((int) TimeUnit.MINUTES.toMillis(1));
                     createInboundConnection(clientSocket);
                 } catch (IOException e) {
                     e.printStackTrace();
@@ -168,9 +165,9 @@ public class TorServiceDemo {
     }
 
     // Outbound connection
-    private static void sendViaSocket(TorService torService, OnionAddress onionAddress) {
+    private static void sendViaSocket(Torify torify, OnionAddress onionAddress) {
         try {
-            Socket socket = torService.getSocket("test_stream_id");
+            Socket socket = torify.getSocket("test_stream_id");
             socket.connect(new InetSocketAddress(onionAddress.getHost(), onionAddress.getPort()));
             sendOnOutboundConnection(socket, "test via Socket");
         } catch (IOException e) {
@@ -178,18 +175,18 @@ public class TorServiceDemo {
         }
     }
 
-    private static void sendViaSocksSocket(TorService torService, OnionAddress onionAddress) {
+    private static void sendViaSocksSocket(Torify torify, OnionAddress onionAddress) {
         try {
-            SocksSocket socket = torService.getSocksSocket(onionAddress.getHost(), onionAddress.getPort(), "test_stream_id");
+            SocksSocket socket = torify.getSocksSocket(onionAddress.getHost(), onionAddress.getPort(), "test_stream_id");
             sendOnOutboundConnection(socket, "test via SocksSocket");
         } catch (IOException e) {
             e.printStackTrace();
         }
     }
 
-    private static void sendViaSocketFactory(TorService torService, OnionAddress onionAddress) {
+    private static void sendViaSocketFactory(Torify torify, OnionAddress onionAddress) {
         try {
-            SocketFactory socketFactory = torService.getSocketFactory("test_stream_id");
+            SocketFactory socketFactory = torify.getSocketFactory("test_stream_id");
             Socket socket = socketFactory.createSocket(onionAddress.getHost(), onionAddress.getPort());
             sendOnOutboundConnection(socket, "test via SocketFactory");
         } catch (IOException e) {
@@ -197,9 +194,9 @@ public class TorServiceDemo {
         }
     }
 
-    private static void sendViaProxy(TorService torService, OnionAddress onionAddress) {
+    private static void sendViaProxy(Torify torify, OnionAddress onionAddress) {
         try {
-            Proxy proxy = torService.getProxy("test_stream_id");
+            Proxy proxy = torify.getProxy("test_stream_id");
             Socket socket = new Socket(proxy);
             socket.connect(new InetSocketAddress(onionAddress.getHost(), onionAddress.getPort()));
             sendOnOutboundConnection(socket, "test via Proxy");
@@ -225,4 +222,29 @@ public class TorServiceDemo {
             }
         }).start();
     }
+
+    // Utils
+    public static File getUserDataDir() {
+        if (isWindows())
+            return new File(System.getenv("APPDATA"));
+
+        if (isOSX())
+            return Paths.get(System.getProperty("user.home"), "Library", "Application Support").toFile();
+
+        // *nix
+        return Paths.get(System.getProperty("user.home"), ".local", "share").toFile();
+    }
+
+    public static boolean isWindows() {
+        return getOSName().contains("win");
+    }
+
+    public static boolean isOSX() {
+        return getOSName().contains("mac") || getOSName().contains("darwin");
+    }
+
+    private static String getOSName() {
+        return System.getProperty("os.name").toLowerCase(Locale.US);
+    }
+
 }

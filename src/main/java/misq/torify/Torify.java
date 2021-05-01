@@ -48,7 +48,8 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 import java.lang.management.ManagementFactory;
 
-import lombok.extern.slf4j.Slf4j;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import javax.annotation.Nullable;
 
@@ -56,8 +57,9 @@ import javax.annotation.Nullable;
 
 import net.freehaven.tor.control.TorControlConnection;
 
-@Slf4j
-public class TorService {
+public class Torify {
+    private static final Logger log = LoggerFactory.getLogger(Torify.class);
+
     public final static String TOR_SERVICE_VERSION = "0.1.0";
 
     public interface Listener {
@@ -84,7 +86,7 @@ public class TorService {
     private TorControlConnection torControlConnection;
     private Socket controlSocket;
 
-    public TorService(String torDirPath) {
+    public Torify(String torDirPath) {
         this.torDirPath = torDirPath;
 
         osType = OsType.detectOs();
@@ -268,19 +270,27 @@ public class TorService {
     }
 
     void installFiles() throws IOException {
-        FileUtil.makeDirs(torDir);
-        FileUtil.makeDirs(dotTorDir);
+        try {
 
-        FileUtil.makeFile(versionFile);
-        FileUtil.writeToFile(TOR_SERVICE_VERSION, versionFile);
+            FileUtil.makeDirs(torDir);
+            FileUtil.makeDirs(dotTorDir);
 
-        FileUtil.resourceToFile(geoIPFile);
-        FileUtil.resourceToFile(geoIPv6File);
+            FileUtil.makeFile(versionFile);
 
-        installTorrcFile();
+            FileUtil.resourceToFile(geoIPFile);
+            FileUtil.resourceToFile(geoIPv6File);
 
-        FileUtil.extractBinary(torDirPath, osType);
-        log.info("Tor files installed to {}", torDirPath);
+            installTorrcFile();
+
+            FileUtil.extractBinary(torDirPath, osType);
+            log.info("Tor files installed to {}", torDirPath);
+            // Only if we have successfully extracted all files we write our version file which is used to
+            // check if we need to call installFiles.
+            FileUtil.writeToFile(TOR_SERVICE_VERSION, versionFile);
+        } catch (Throwable e) {
+            versionFile.delete();
+            throw e;
+        }
     }
 
     private void installTorrcFile() throws IOException {
