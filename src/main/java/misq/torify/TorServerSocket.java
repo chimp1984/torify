@@ -83,19 +83,19 @@ public class TorServerSocket extends ServerSocket {
 
         File hostNameFile = new File(hsDir.getCanonicalPath(), HOSTNAME);
         File privKeyFile = new File(hsDir.getCanonicalPath(), PRIV_KEY);
-        FileUtil.makeDirs(hsDir);
+        Utils.makeDirs(hsDir);
 
         TorControlConnection torControlConnection = torify.getTorControlConnection();
         TorControlConnection.CreateHiddenServiceResult result;
         if (privKeyFile.exists()) {
-            String privateKey = FileUtil.readFromFile(privKeyFile);
+            String privateKey = Utils.readFromFile(privKeyFile);
             result = torControlConnection.createHiddenService(hiddenServicePort, localPort, privateKey);
         } else {
             result = torControlConnection.createHiddenService(hiddenServicePort, localPort);
         }
 
         if (!hostNameFile.exists()) {
-            FileUtil.makeFile(hostNameFile);
+            Utils.makeFile(hostNameFile);
         }
         String serviceId = result.serviceID;
 
@@ -103,12 +103,12 @@ public class TorServerSocket extends ServerSocket {
             onionAddress = new OnionAddress(serviceId + ".onion", hiddenServicePort);
         }
 
-        FileUtil.writeToFile(onionAddress.getHost(), hostNameFile);
+        Utils.writeToFile(onionAddress.getHost(), hostNameFile);
 
         if (!privKeyFile.exists()) {
-            FileUtil.makeFile(privKeyFile);
+            Utils.makeFile(privKeyFile);
         }
-        FileUtil.writeToFile(result.privateKey, privKeyFile);
+        Utils.writeToFile(result.privateKey, privKeyFile);
 
         log.debug("Start publishing hidden service {}", onionAddress);
         CountDownLatch latch = new CountDownLatch(1);

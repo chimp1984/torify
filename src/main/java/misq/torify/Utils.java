@@ -17,10 +17,14 @@
 
 package misq.torify;
 
+import com.google.common.util.concurrent.ThreadFactoryBuilder;
+
 import org.apache.commons.compress.archivers.ArchiveEntry;
 import org.apache.commons.compress.archivers.tar.TarArchiveEntry;
 import org.apache.commons.compress.archivers.tar.TarArchiveInputStream;
 import org.apache.commons.compress.compressors.xz.XZCompressorInputStream;
+
+import java.nio.file.Paths;
 
 import java.io.BufferedReader;
 import java.io.EOFException;
@@ -35,13 +39,48 @@ import java.io.InputStreamReader;
 import java.io.OutputStream;
 import java.io.PrintWriter;
 
+import java.util.Locale;
 import java.util.Scanner;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ThreadFactory;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-public class FileUtil {
-    private static final Logger log = LoggerFactory.getLogger(FileUtil.class);
+public class Utils {
+    private static final Logger log = LoggerFactory.getLogger(Utils.class);
+
+    public static ExecutorService getSingleThreadExecutor(String name) {
+        final ThreadFactory threadFactory = new ThreadFactoryBuilder()
+                .setNameFormat(name)
+                .setDaemon(true)
+                .build();
+        return Executors.newSingleThreadExecutor(threadFactory);
+    }
+
+    public static File getUserDataDir() {
+        if (isWindows())
+            return new File(System.getenv("APPDATA"));
+
+        if (isOSX())
+            return Paths.get(System.getProperty("user.home"), "Library", "Application Support").toFile();
+
+        // *nix
+        return Paths.get(System.getProperty("user.home"), ".local", "share").toFile();
+    }
+
+    public static boolean isWindows() {
+        return getOSName().contains("win");
+    }
+
+    public static boolean isOSX() {
+        return getOSName().contains("mac") || getOSName().contains("darwin");
+    }
+
+    private static String getOSName() {
+        return System.getProperty("os.name").toLowerCase(Locale.US);
+    }
 
     public static void makeDirs(File dir) throws IOException {
         if (!dir.exists() && !dir.mkdirs()) {
@@ -75,7 +114,7 @@ public class FileUtil {
     }
 
     public static InputStream getResourceAsStream(String fileName) throws IOException {
-        InputStream resource = FileUtil.class.getResourceAsStream(fileName);
+        InputStream resource = Utils.class.getResourceAsStream(fileName);
         if (resource == null) {
             throw new IOException("Could not load " + fileName);
         }
@@ -92,7 +131,7 @@ public class FileUtil {
     }
 
     public static void appendFromResource(PrintWriter printWriter, String pathname) {
-        try (InputStream inputStream = FileUtil.class.getResourceAsStream(pathname);
+        try (InputStream inputStream = Utils.class.getResourceAsStream(pathname);
              BufferedReader bufferedReader = new BufferedReader(new InputStreamReader(inputStream))) {
             String line;
             while ((line = bufferedReader.readLine()) != null) {
@@ -128,7 +167,7 @@ public class FileUtil {
     }
 
     public static void extractBinary(String torDirectory, OsType osType) throws IOException {
-        InputStream archiveInputStream = FileUtil.getResourceAsStream(osType.getArchiveName());
+        InputStream archiveInputStream = Utils.getResourceAsStream(osType.getArchiveName());
         try (XZCompressorInputStream compressorInputStream = new XZCompressorInputStream(archiveInputStream);
              TarArchiveInputStream tarArchiveInputStream = new TarArchiveInputStream(compressorInputStream)) {
             ArchiveEntry entry;
@@ -141,7 +180,7 @@ public class FileUtil {
                         throw new IOException("Could not create directory. File= " + file);
                     }
                     continue;
-                   // return;
+                    // return;
                 }
 
                 if (!file.getParentFile().exists() && !file.getParentFile().mkdirs()) {
@@ -176,5 +215,15 @@ public class FileUtil {
                 }
             }
         }
+    }
+
+    public static void deleteDirectory(File dir)  {
+            File[] files = dir.listFiles();
+            if(files != null) {
+                for (final File file : files) {
+                    deleteDirectory(file);
+                }
+            }
+            dir.delete();
     }
 }

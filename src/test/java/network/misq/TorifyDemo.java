@@ -25,14 +25,11 @@ import java.net.InetSocketAddress;
 import java.net.Proxy;
 import java.net.Socket;
 
-import java.nio.file.Paths;
-
 import java.io.File;
 import java.io.IOException;
 import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
 
-import java.util.Locale;
 import java.util.function.Consumer;
 
 import org.slf4j.Logger;
@@ -43,12 +40,13 @@ import org.slf4j.LoggerFactory;
 import misq.torify.OnionAddress;
 import misq.torify.TorServerSocket;
 import misq.torify.Torify;
+import misq.torify.Utils;
 
 public class TorifyDemo {
     private static final Logger log = LoggerFactory.getLogger(TorifyDemo.class);
 
     public static void main(String[] args) throws IOException, InterruptedException {
-        String torDirPath = getUserDataDir() + "/TorifyDemo";
+        String torDirPath = Utils.getUserDataDir() + "/TorifyDemo";
         // useBlockingAPI(torDirPath);
         useNonBlockingAPI(torDirPath);
         while (true) {
@@ -91,7 +89,9 @@ public class TorifyDemo {
         try {
             TorServerSocket torServerSocket = new TorServerSocket(torify);
             // blocking version
-            torServerSocket.blockingBind(4000, 9999, new File(torify.getTorDir(), "hiddenservice_2"));
+            torServerSocket.blockingBind(4000,
+                    9999,
+                    new File(torify.getTorDir(), "hiddenservice_2"));
             runServer(torServerSocket);
             return torServerSocket;
         } catch (IOException | InterruptedException e) {
@@ -102,17 +102,20 @@ public class TorifyDemo {
     private static void startServerNonBlocking(Torify torify, Consumer<OnionAddress> resultHandler) {
         try {
             TorServerSocket torServerSocket = new TorServerSocket(torify);
-            torServerSocket.bind(3000, new TorServerSocket.Listener() {
-                @Override
-                public void onComplete(OnionAddress onionAddress) {
-                    runServer(torServerSocket);
-                    resultHandler.accept(torServerSocket.getOnionAddress());
-                }
+            torServerSocket.bind(3000,
+                    4444,
+                    new File(torify.getTorDir(), "hiddenservice_3"),
+                    new TorServerSocket.Listener() {
+                        @Override
+                        public void onComplete(OnionAddress onionAddress) {
+                            runServer(torServerSocket);
+                            resultHandler.accept(torServerSocket.getOnionAddress());
+                        }
 
-                @Override
-                public void onFault(Exception exception) {
-                }
-            });
+                        @Override
+                        public void onFault(Exception exception) {
+                        }
+                    });
         } catch (IOException e) {
             throw new RuntimeException(e);
         }
@@ -229,28 +232,5 @@ public class TorifyDemo {
         }).start();
     }
 
-    // Utils
-    public static File getUserDataDir() {
-        if (isWindows())
-            return new File(System.getenv("APPDATA"));
-
-        if (isOSX())
-            return Paths.get(System.getProperty("user.home"), "Library", "Application Support").toFile();
-
-        // *nix
-        return Paths.get(System.getProperty("user.home"), ".local", "share").toFile();
-    }
-
-    public static boolean isWindows() {
-        return getOSName().contains("win");
-    }
-
-    public static boolean isOSX() {
-        return getOSName().contains("mac") || getOSName().contains("darwin");
-    }
-
-    private static String getOSName() {
-        return System.getProperty("os.name").toLowerCase(Locale.US);
-    }
 
 }

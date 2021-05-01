@@ -21,6 +21,8 @@ import com.runjva.sourceforge.jsocks.protocol.Authentication;
 import com.runjva.sourceforge.jsocks.protocol.Socks5Proxy;
 import com.runjva.sourceforge.jsocks.protocol.SocksSocket;
 
+import com.google.common.util.concurrent.MoreExecutors;
+
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 
@@ -44,6 +46,8 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Scanner;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import java.lang.management.ManagementFactory;
@@ -52,6 +56,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import javax.annotation.Nullable;
+
+import static com.google.common.base.Preconditions.checkArgument;
 
 
 
@@ -67,6 +73,8 @@ public class Torify {
 
         void onFault(Exception exception);
     }
+
+    private final ExecutorService startTorExecutor = Utils.getSingleThreadExecutor("Torify.start");
 
     private final String torDirPath;
     private final OsType osType;
@@ -85,6 +93,8 @@ public class Torify {
 
     private TorControlConnection torControlConnection;
     private Socket controlSocket;
+    private volatile boolean shutdownRequested;
+
 
     public Torify(String torDirPath) {
         this.torDirPath = torDirPath;
@@ -92,52 +102,60 @@ public class Torify {
         osType = OsType.detectOs();
 
         Runtime.getRuntime().addShutdownHook(new Thread(() -> {
-            Thread.currentThread().setName("TorService.shutdownHook");
-            try {
-                shutDown();
-            } catch (IOException ignore) {
-            }
+            Thread.currentThread().setName("Torify.shutdownHook");
+            shutdown();
         }));
     }
 
-    public void shutDown() throws IOException {
-        if (torControlConnection == null) {
-            return;
-        }
+    public void shutdown() {
+        shutdownRequested = true;
+        log.info("Start shutdown Tor");
         try {
-            torControlConnection.setConf(Constants.DISABLE_NETWORK, "1");
-            torControlConnection.shutdownTor("TERM");
+            if (torControlConnection != null) {
+                torControlConnection.setConf(Constants.DISABLE_NETWORK, "1");
+                torControlConnection.shutdownTor("TERM");
+            }
+            MoreExecutors.shutdownAndAwaitTermination(startTorExecutor, 100, TimeUnit.MILLISECONDS);
+        } catch (IOException e) {
+            e.printStackTrace();
+            log.error(e.toString());
         } finally {
             try {
                 if (controlSocket != null) {
-                    controlSocket.close();
+                    try {
+                        controlSocket.close();
+                    } catch (IOException ignore) {
+                    }
                 }
             } finally {
                 controlSocket = null;
                 torControlConnection = null;
             }
+            log.info("Shutdown Tor completed");
         }
     }
 
     public void start(Listener listener) {
-        new Thread(() -> {
-            Thread.currentThread().setName("TorService.start");
+        checkArgument(!shutdownRequested, "shutdown already requested");
+        startTorExecutor.execute(() -> {
             try {
                 blockingStart();
                 listener.onComplete();
             } catch (IOException | InterruptedException e) {
-                e.printStackTrace();
+                deleteVersionFile();
                 listener.onFault(e);
             }
-        }).start();
+        });
     }
 
     public void blockingStart() throws IOException, InterruptedException {
+        checkArgument(!shutdownRequested, "shutdown already requested");
         long ts = System.currentTimeMillis();
         maybeCleanupCookieFile();
         createFiles();
         if (!isUpToDate()) {
             installFiles();
+            log.info("Files installed");
         }
 
         if (!bridgeConfig.isEmpty()) {
@@ -146,6 +164,7 @@ public class Torify {
 
         Process torProcess = startTorProcess();
         log.info("Tor process started");
+
 
         int controlPort = waitForControlPort(torProcess);
         terminateProcessBuilder(torProcess);
@@ -161,6 +180,7 @@ public class Torify {
     }
 
     public SocksSocket getSocksSocket(String remoteHost, int remotePort, @Nullable String streamId) throws IOException {
+        checkArgument(!shutdownRequested, "shutdown already requested");
         Socks5Proxy socks5Proxy = getSocks5Proxy(streamId);
         SocksSocket socksSocket = new SocksSocket(socks5Proxy, remoteHost, remotePort);
         socksSocket.setTcpNoDelay(true);
@@ -172,20 +192,24 @@ public class Torify {
     }
 
     public Socket getSocket(@Nullable String streamId) throws IOException {
+        checkArgument(!shutdownRequested, "shutdown already requested");
         return new Socket(getProxy(streamId));
     }
 
     public Proxy getProxy(@Nullable String streamId) throws IOException {
+        checkArgument(!shutdownRequested, "shutdown already requested");
         Socks5Proxy socks5Proxy = getSocks5Proxy(streamId);
         InetSocketAddress socketAddress = new InetSocketAddress(socks5Proxy.getInetAddress(), socks5Proxy.getPort());
         return new Proxy(Proxy.Type.SOCKS, socketAddress);
     }
 
     public SocketFactory getSocketFactory(@Nullable String streamId) throws IOException {
+        checkArgument(!shutdownRequested, "shutdown already requested");
         return new TorSocketFactory(getProxy(streamId));
     }
 
     public Socks5Proxy getSocks5Proxy(@Nullable String streamId) throws IOException {
+        checkArgument(!shutdownRequested, "shutdown already requested");
         int proxyPort = getProxyPort();
         Socks5Proxy socks5Proxy = new Socks5Proxy(Constants.LOCALHOST, proxyPort);
         socks5Proxy.resolveAddrLocally(false);
@@ -272,35 +296,34 @@ public class Torify {
     }
 
     boolean isUpToDate() throws IOException {
-        return versionFile.exists() && TOR_SERVICE_VERSION.equals(FileUtil.readFromFile(versionFile));
+        return versionFile.exists() && TOR_SERVICE_VERSION.equals(Utils.readFromFile(versionFile));
     }
 
     void installFiles() throws IOException {
         try {
+            Utils.makeDirs(torDir);
+            Utils.makeDirs(dotTorDir);
 
-            FileUtil.makeDirs(torDir);
-            FileUtil.makeDirs(dotTorDir);
+            Utils.makeFile(versionFile);
 
-            FileUtil.makeFile(versionFile);
-
-            FileUtil.resourceToFile(geoIPFile);
-            FileUtil.resourceToFile(geoIPv6File);
+            Utils.resourceToFile(geoIPFile);
+            Utils.resourceToFile(geoIPv6File);
 
             installTorrcFile();
 
-            FileUtil.extractBinary(torDirPath, osType);
+            Utils.extractBinary(torDirPath, osType);
             log.info("Tor files installed to {}", torDirPath);
             // Only if we have successfully extracted all files we write our version file which is used to
             // check if we need to call installFiles.
-            FileUtil.writeToFile(TOR_SERVICE_VERSION, versionFile);
+            Utils.writeToFile(TOR_SERVICE_VERSION, versionFile);
         } catch (Throwable e) {
-            versionFile.delete();
+            deleteVersionFile();
             throw e;
         }
     }
 
     private void installTorrcFile() throws IOException {
-        FileUtil.resourceToFile(torrcFile);
+        Utils.resourceToFile(torrcFile);
         extendTorrcFile();
     }
 
@@ -311,9 +334,9 @@ public class Torify {
 
             // Defaults are from resources
             printWriter.println("");
-            FileUtil.appendFromResource(printWriter, "/" + Constants.TORRC_DEFAULTS);
+            Utils.appendFromResource(printWriter, "/" + Constants.TORRC_DEFAULTS);
             printWriter.println("");
-            FileUtil.appendFromResource(printWriter, osType.getTorrcNative());
+            Utils.appendFromResource(printWriter, osType.getTorrcNative());
 
             // Update with our newly created files
             printWriter.println("");
@@ -344,11 +367,16 @@ public class Torify {
         log.info("Added bridges to torrc");
     }
 
+    private void deleteVersionFile() {
+        if (versionFile != null)
+            versionFile.delete();
+    }
+
     private Process startTorProcess() throws IOException {
         String processName = ManagementFactory.getRuntimeMXBean().getName();
         String ownerPid = processName.split("@")[0];
         log.debug("Owner pid {}", ownerPid);
-        FileUtil.writeToFile(ownerPid, pidFile);
+        Utils.writeToFile(ownerPid, pidFile);
 
         String path = new File(torDir, osType.getBinaryName()).getAbsolutePath();
         String[] command = {path, "-f", torrcFile.getAbsolutePath(), Constants.OWNER, ownerPid};
@@ -421,7 +449,7 @@ public class Torify {
         controlSocket = new Socket("127.0.0.1", controlPort);
         TorControlConnection connection = new TorControlConnection(controlSocket);
         log.debug("authenticate cookieFile: {}", cookieFile);
-        connection.authenticate(FileUtil.asBytes(cookieFile));
+        connection.authenticate(Utils.asBytes(cookieFile));
         connection.setEventHandler(eventHandler);
         connection.setEvents(Constants.EVENTS);
         connection.takeOwnership();
@@ -430,18 +458,15 @@ public class Torify {
         return connection;
     }
 
-    private void listenForBootstrapComplete() {
+    private void listenForBootstrapComplete() throws IOException, InterruptedException {
         while (true) {
-            try {
-                String status = torControlConnection.getInfo(Constants.STATUS_BOOTSTRAP_PHASE);
+            String status = torControlConnection.getInfo(Constants.STATUS_BOOTSTRAP_PHASE);
+            log.debug("Listen on bootstrap progress: >> {}", status);
+            if (status != null && status.contains("PROGRESS=100")) {
                 log.info("Listen on bootstrap progress: >> {}", status);
-                if (status != null && status.contains("PROGRESS=100")) {
-                    break;
-                } else {
-                    Thread.sleep(500);
-                }
-            } catch (IOException | InterruptedException e) {
-                e.printStackTrace();
+                break;
+            } else {
+                Thread.sleep(500);
             }
         }
     }
