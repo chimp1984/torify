@@ -5,7 +5,7 @@
 
     <groupId>network.misq</groupId>
     <artifactId>torify</artifactId>
-    <version>0.6.8.4-SNAPSHOT-1</version>
+    <version>0.6.8.4.1</version>
 
     <name>Torify</name>
 
