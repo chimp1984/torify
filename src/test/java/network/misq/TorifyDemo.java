@@ -15,7 +15,7 @@
  * along with Bisq. If not, see <http://www.gnu.org/licenses/>.
  */
 
-package misq.torify;
+package network.misq;
 
 import com.runjva.sourceforge.jsocks.protocol.SocksSocket;
 
@@ -37,6 +37,12 @@ import java.util.function.Consumer;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+
+
+import misq.torify.OnionAddress;
+import misq.torify.TorServerSocket;
+import misq.torify.Torify;
 
 public class TorifyDemo {
     private static final Logger log = LoggerFactory.getLogger(TorifyDemo.class);
