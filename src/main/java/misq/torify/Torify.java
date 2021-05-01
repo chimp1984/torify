@@ -109,7 +109,9 @@ public class Torify {
             torControlConnection.shutdownTor("TERM");
         } finally {
             try {
-                controlSocket.close();
+                if (controlSocket != null) {
+                    controlSocket.close();
+                }
             } finally {
                 controlSocket = null;
                 torControlConnection = null;
@@ -163,6 +165,10 @@ public class Torify {
         SocksSocket socksSocket = new SocksSocket(socks5Proxy, remoteHost, remotePort);
         socksSocket.setTcpNoDelay(true);
         return socksSocket;
+    }
+
+    public Socket getSocket() throws IOException {
+        return new Socket(getProxy(null));
     }
 
     public Socket getSocket(@Nullable String streamId) throws IOException {
