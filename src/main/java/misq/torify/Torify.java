@@ -46,6 +46,8 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Scanner;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.Executor;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -65,39 +67,39 @@ import net.freehaven.tor.control.TorControlConnection;
 
 public class Torify {
     private static final Logger log = LoggerFactory.getLogger(Torify.class);
-
     public final static String TOR_SERVICE_VERSION = "0.1.0";
-
-    public interface Listener {
-        void onComplete();
-
-        void onFault(Exception exception);
-    }
-
-    private final ExecutorService startTorExecutor = Utils.getSingleThreadExecutor("Torify.start");
-
-    private final String torDirPath;
-    private final OsType osType;
 
     private final TorEventHandler eventHandler = new TorEventHandler();
     private final List<String> bridgeConfig = new ArrayList<>();
-
-    private File torDir;
-    private File dotTorDir;
-    private File versionFile;
-    private File pidFile;
-    private File geoIPFile;
-    private File geoIPv6File;
-    private File torrcFile;
-    private File cookieFile;
+    private final String torDirPath;
+    private final File torDir;
+    private final File dotTorDir;
+    private final File versionFile;
+    private final File pidFile;
+    private final File geoIPFile;
+    private final File geoIPv6File;
+    private final File torrcFile;
+    private final File cookieFile;
+    private final OsType osType;
 
     private TorControlConnection torControlConnection;
     private Socket controlSocket;
     private volatile boolean shutdownRequested;
+    @Nullable
+    private ExecutorService startupExecutor;
 
 
     public Torify(String torDirPath) {
         this.torDirPath = torDirPath;
+
+        torDir = new File(torDirPath);
+        dotTorDir = new File(torDirPath, Constants.DOT_TOR);
+        versionFile = new File(torDirPath, Constants.VERSION);
+        pidFile = new File(torDirPath, Constants.PID);
+        geoIPFile = new File(torDirPath, Constants.GEO_IP);
+        geoIPv6File = new File(torDirPath, Constants.GEO_IPV_6);
+        torrcFile = new File(torDirPath, Constants.TORRC);
+        cookieFile = new File(dotTorDir.getAbsoluteFile(), Constants.COOKIE);
 
         osType = OsType.detectOs();
 
@@ -110,12 +112,16 @@ public class Torify {
     public void shutdown() {
         shutdownRequested = true;
         log.info("Start shutdown Tor");
+
+        if (startupExecutor != null) {
+            MoreExecutors.shutdownAndAwaitTermination(startupExecutor, 100, TimeUnit.MILLISECONDS);
+        }
+
         try {
             if (torControlConnection != null) {
                 torControlConnection.setConf(Constants.DISABLE_NETWORK, "1");
                 torControlConnection.shutdownTor("TERM");
             }
-            MoreExecutors.shutdownAndAwaitTermination(startTorExecutor, 100, TimeUnit.MILLISECONDS);
         } catch (IOException e) {
             e.printStackTrace();
             log.error(e.toString());
@@ -135,27 +141,32 @@ public class Torify {
         }
     }
 
-    public void start(Listener listener) {
-        checkArgument(!shutdownRequested, "shutdown already requested");
-        startTorExecutor.execute(() -> {
-            try {
-                blockingStart();
-                listener.onComplete();
-            } catch (IOException | InterruptedException e) {
-                deleteVersionFile();
-                listener.onFault(e);
-            }
-        });
+    public CompletableFuture<Boolean> startAsync() {
+        return startAsync(getStartupExecutor());
     }
 
-    public void blockingStart() throws IOException, InterruptedException {
+    public CompletableFuture<Boolean> startAsync(Executor executor) {
+        CompletableFuture<Boolean> future = new CompletableFuture<>();
+        checkArgument(!shutdownRequested, "shutdown already requested");
+        executor.execute(() -> {
+            try {
+                start();
+                future.complete(true);
+            } catch (IOException | InterruptedException e) {
+                deleteVersionFile();
+                future.completeExceptionally(e);
+            }
+        });
+        return future;
+    }
+
+    // Blocking start
+    public void start() throws IOException, InterruptedException {
         checkArgument(!shutdownRequested, "shutdown already requested");
         long ts = System.currentTimeMillis();
         maybeCleanupCookieFile();
-        createFiles();
         if (!isUpToDate()) {
             installFiles();
-            log.info("Files installed");
         }
 
         if (!bridgeConfig.isEmpty()) {
@@ -281,18 +292,6 @@ public class Torify {
         if (cookieFile.exists() && !cookieFile.delete()) {
             throw new IOException("Cannot delete old cookie file.");
         }
-    }
-
-    void createFiles() throws IOException {
-        torDir = new File(torDirPath);
-        dotTorDir = new File(torDirPath, Constants.DOT_TOR);
-
-        versionFile = new File(torDirPath, Constants.VERSION);
-        pidFile = new File(torDirPath, Constants.PID);
-        geoIPFile = new File(torDirPath, Constants.GEO_IP);
-        geoIPv6File = new File(torDirPath, Constants.GEO_IPV_6);
-        torrcFile = new File(torDirPath, Constants.TORRC);
-        cookieFile = new File(dotTorDir.getCanonicalPath(), Constants.COOKIE);
     }
 
     boolean isUpToDate() throws IOException {
@@ -469,5 +468,10 @@ public class Torify {
                 Thread.sleep(500);
             }
         }
+    }
+
+    private ExecutorService getStartupExecutor() {
+        startupExecutor = Utils.getSingleThreadExecutor("Torify.startAsync");
+        return startupExecutor;
     }
 }

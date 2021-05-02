@@ -14,6 +14,7 @@
  * You should have received a copy of the GNU Affero General Public License
  * along with Bisq. If not, see <http://www.gnu.org/licenses/>.
  */
+
 package misq.torify;
 
 import java.net.InetSocketAddress;
@@ -22,7 +23,10 @@ import java.net.ServerSocket;
 import java.io.File;
 import java.io.IOException;
 
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.Executor;
+import java.util.concurrent.ExecutorService;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -41,43 +45,51 @@ import net.freehaven.tor.control.TorControlConnection;
 public class TorServerSocket extends ServerSocket {
     private static final Logger log = LoggerFactory.getLogger(TorServerSocket.class);
 
-    public interface Listener {
-        void onComplete(OnionAddress onionAddress);
-
-        void onFault(Exception exception);
-
-    }
-
     private final Torify torify;
-    private final Object lock = new Object();
     @Nullable
     private OnionAddress onionAddress;
+    @Nullable
+    private ExecutorService executor;
 
     public TorServerSocket(Torify torify) throws IOException {
         this.torify = torify;
     }
 
-    public void bind(int hiddenServicePort, Listener listener) {
-        bind(hiddenServicePort, hiddenServicePort, new File(torify.getTorDir(), HS_DIR), listener);
+
+    public CompletableFuture<OnionAddress> bindAsync(int hiddenServicePort) {
+        return bindAsync(hiddenServicePort, hiddenServicePort);
     }
 
-    public void bind(int hiddenServicePort, int localPort, Listener listener) {
-        bind(hiddenServicePort, localPort, new File(torify.getTorDir(), HS_DIR), listener);
+    public CompletableFuture<OnionAddress> bindAsync(int hiddenServicePort, int localPort) {
+        return bindAsync(hiddenServicePort, localPort, new File(torify.getTorDir(), HS_DIR));
     }
 
-    public void bind(int hiddenServicePort, int localPort, File hsDir, Listener listener) {
-        new Thread(() -> {
+    public CompletableFuture<OnionAddress> bindAsync(int hiddenServicePort, int localPort, File hsDir) {
+        return bindAsync(hiddenServicePort, localPort, hsDir, getExecutor());
+    }
+
+    public CompletableFuture<OnionAddress> bindAsync(int hiddenServicePort,
+                                                     int localPort,
+                                                     File hsDir,
+                                                     @Nullable Executor executor) {
+        CompletableFuture<OnionAddress> future = new CompletableFuture<>();
+        if (executor == null) {
+            executor = Utils.directExecutor();
+        }
+        executor.execute(() -> {
             Thread.currentThread().setName("TorServerSocket.bind");
             try {
-                blockingBind(hiddenServicePort, localPort, hsDir);
-                listener.onComplete(onionAddress);
+                bind(hiddenServicePort, localPort, hsDir);
+                future.complete(onionAddress);
             } catch (IOException | InterruptedException e) {
-                listener.onFault(e);
+                future.completeExceptionally(e);
             }
-        }).start();
+        });
+        return future;
     }
 
-    public void blockingBind(int hiddenServicePort, int localPort, File hsDir) throws IOException, InterruptedException {
+    // Blocking
+    public void bind(int hiddenServicePort, int localPort, File hsDir) throws IOException, InterruptedException {
         log.debug("Start bind TorServerSocket");
         long ts = System.currentTimeMillis();
 
@@ -99,10 +111,7 @@ public class TorServerSocket extends ServerSocket {
         }
         String serviceId = result.serviceID;
 
-        synchronized (lock) {
-            onionAddress = new OnionAddress(serviceId + ".onion", hiddenServicePort);
-        }
-
+        onionAddress = new OnionAddress(serviceId + ".onion", hiddenServicePort);
         Utils.writeToFile(onionAddress.getHost(), hostNameFile);
 
         if (!privKeyFile.exists()) {
@@ -137,5 +146,10 @@ public class TorServerSocket extends ServerSocket {
     @Nullable
     public OnionAddress getOnionAddress() {
         return onionAddress;
+    }
+
+    private ExecutorService getExecutor() {
+        executor = Utils.getSingleThreadExecutor("TorServerSocket.bindAsync");
+        return executor;
     }
 }

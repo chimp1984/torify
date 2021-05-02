@@ -54,25 +54,25 @@ public class TestTorStart {
 
         }).start();
         Thread mainThread = Thread.currentThread();
-        torify.start(new Torify.Listener() {
-            @Override
-            public void onComplete() {
-                fail();
-            }
-
-            @Override
-            public void onFault(Exception exception) {
-                assertFalse(versionFile.exists());
-                mainThread.interrupt();
-            }
-        });
+        torify.startAsync()
+                .exceptionally(throwable -> {
+                    assertFalse(versionFile.exists());
+                    mainThread.interrupt();
+                    return false;
+                })
+                .thenAccept(success -> {
+                    if (!success) {
+                        return;
+                    }
+                    fail();
+                });
         try {
             Thread.sleep(2000);
         } catch (InterruptedException ignore) {
         }
     }
 
-     @Test
+    @Test
     public void testRepeatedStartAndShutdown() throws IOException, InterruptedException {
         String torDirPath = Utils.getUserDataDir() + "/Torify_test";
         File versionFile = new File(torDirPath + "/" + Constants.VERSION);
@@ -84,7 +84,7 @@ public class TestTorStart {
         Utils.deleteDirectory(new File(torDirPath));
         assertFalse(versionFile.exists());
         Torify torify = new Torify(torDirPath);
-        torify.blockingStart();
+        torify.start();
         torify.shutdown();
         assertTrue(versionFile.exists());
     }

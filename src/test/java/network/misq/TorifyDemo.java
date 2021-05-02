@@ -30,7 +30,8 @@ import java.io.IOException;
 import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
 
-import java.util.function.Consumer;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -45,80 +46,96 @@ import misq.torify.Utils;
 public class TorifyDemo {
     private static final Logger log = LoggerFactory.getLogger(TorifyDemo.class);
 
-    public static void main(String[] args) throws IOException, InterruptedException {
+    public static void main(String[] args) {
         String torDirPath = Utils.getUserDataDir() + "/TorifyDemo";
-        // useBlockingAPI(torDirPath);
-        useNonBlockingAPI(torDirPath);
-        while (true) {
-        }
+      //  useBlockingAPI(torDirPath);
+         useNonBlockingAPI(torDirPath);
     }
 
-    private static void useBlockingAPI(String torDirPath) throws IOException, InterruptedException {
-        Torify torify = new Torify(torDirPath);
-        torify.blockingStart();
-        TorServerSocket torServerSocket = startServerBlocking(torify);
-        OnionAddress onionAddress = torServerSocket.getOnionAddress();
-        sendViaSocketFactory(torify, onionAddress);
-        sendViaProxy(torify, onionAddress);
-        sendViaSocket(torify, onionAddress);
-        sendViaSocksSocket(torify, onionAddress);
+    private static void useBlockingAPI(String torDirPath) {
+        try {
+            Torify torify = new Torify(torDirPath);
+            torify.start();
+            TorServerSocket torServerSocket = startServer(torify);
+            OnionAddress onionAddress = torServerSocket.getOnionAddress();
+            sendViaSocketFactory(torify, onionAddress);
+            sendViaProxy(torify, onionAddress);
+            sendViaSocket(torify, onionAddress);
+            sendViaSocksSocket(torify, onionAddress);
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
     }
 
     private static void useNonBlockingAPI(String torDirPath) {
-        Torify torify = new Torify(torDirPath);
-        torify.start(new Torify.Listener() {
-            @Override
-            public void onComplete() {
-                startServerNonBlocking(torify, onionAddress -> {
-                    sendViaSocketFactory(torify, onionAddress);
-                    sendViaProxy(torify, onionAddress);
-                    sendViaSocket(torify, onionAddress);
-                    sendViaSocksSocket(torify, onionAddress);
-                });
-            }
+        AtomicBoolean stopped = new AtomicBoolean(false);
 
-            @Override
-            public void onFault(Exception exception) {
-                log.error(exception.toString());
-            }
-        });
+        Torify torify = new Torify(torDirPath);
+        torify.startAsync()
+                .exceptionally(throwable -> {
+                    log.error(throwable.toString());
+                    throwable.printStackTrace();
+                    return false;
+                })
+                .thenAccept(success -> {
+                    if (!success) {
+                        return;
+                    }
+
+                    startServerAsync(torify)
+                            .exceptionally(throwable -> {
+                                log.error(throwable.toString());
+                                throwable.printStackTrace();
+                                return null;
+                            })
+                            .thenAccept(onionAddress -> {
+                                if (onionAddress == null) {
+                                    return;
+                                }
+
+                                sendViaSocketFactory(torify, onionAddress);
+                                sendViaProxy(torify, onionAddress);
+                                sendViaSocket(torify, onionAddress);
+                                sendViaSocksSocket(torify, onionAddress);
+                                stopped.set(true);
+                            });
+                });
+
+        while (!stopped.get()) {
+        }
     }
 
-    // Server
-    private static TorServerSocket startServerBlocking(Torify torify) {
+    private static TorServerSocket startServer(Torify torify) throws IOException, InterruptedException {
         try {
             TorServerSocket torServerSocket = new TorServerSocket(torify);
-            // blocking version
-            torServerSocket.blockingBind(4000,
-                    9999,
-                    new File(torify.getTorDir(), "hiddenservice_2"));
+            File hsDir = new File(torify.getTorDir(), "hiddenservice_2");
+            torServerSocket.bind(4000, 9999, hsDir);
             runServer(torServerSocket);
             return torServerSocket;
         } catch (IOException | InterruptedException e) {
-            throw new RuntimeException(e);
+            throw e;
         }
     }
 
-    private static void startServerNonBlocking(Torify torify, Consumer<OnionAddress> resultHandler) {
+    private static CompletableFuture<OnionAddress> startServerAsync(Torify torify) {
+        CompletableFuture<OnionAddress> future = new CompletableFuture<>();
         try {
             TorServerSocket torServerSocket = new TorServerSocket(torify);
-            torServerSocket.bind(3000,
-                    4444,
-                    new File(torify.getTorDir(), "hiddenservice_3"),
-                    new TorServerSocket.Listener() {
-                        @Override
-                        public void onComplete(OnionAddress onionAddress) {
+            File hsDir = new File(torify.getTorDir(), "hiddenservice_3");
+            torServerSocket
+                    .bindAsync(3000, 4444, hsDir)
+                    .whenComplete((onionAddress, throwable) -> {
+                        if (throwable == null) {
                             runServer(torServerSocket);
-                            resultHandler.accept(torServerSocket.getOnionAddress());
-                        }
-
-                        @Override
-                        public void onFault(Exception exception) {
+                            future.complete(onionAddress);
+                        } else {
+                            future.completeExceptionally(throwable);
                         }
                     });
         } catch (IOException e) {
-            throw new RuntimeException(e);
+            future.completeExceptionally(e);
         }
+        return future;
     }
 
     private static void runServer(TorServerSocket torServerSocket) {
@@ -130,7 +147,6 @@ public class TorifyDemo {
                     Socket clientSocket = torServerSocket.accept();
                     createInboundConnection(clientSocket);
                 } catch (IOException e) {
-                    e.printStackTrace();
                     try {
                         torServerSocket.close();
                     } catch (IOException ignore) {
@@ -149,7 +165,6 @@ public class TorifyDemo {
                 objectOutputStream.flush();
                 listenOnInputStream(clientSocket, objectInputStream, "inbound connection");
             } catch (IOException e) {
-                log.error("Close clientSocket objectOutputStream " + e.toString());
                 try {
                     clientSocket.close();
                 } catch (IOException ignore) {
@@ -165,7 +180,6 @@ public class TorifyDemo {
                 log.info("Received at {} {}", info, object);
             }
         } catch (IOException | ClassNotFoundException e) {
-            log.error("Close socket at {}. {}", info, e.toString());
             try {
                 socket.close();
             } catch (IOException ignore) {
@@ -223,7 +237,6 @@ public class TorifyDemo {
                 objectOutputStream.flush();
                 listenOnInputStream(socket, objectInputStream, "outbound connection");
             } catch (IOException e) {
-                log.error("Close socket. {} {}", msg, e.toString());
                 try {
                     socket.close();
                 } catch (IOException ignore) {
@@ -231,6 +244,4 @@ public class TorifyDemo {
             }
         }).start();
     }
-
-
 }

@@ -41,6 +41,7 @@ import java.io.PrintWriter;
 
 import java.util.Locale;
 import java.util.Scanner;
+import java.util.concurrent.Executor;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ThreadFactory;
@@ -50,6 +51,15 @@ import org.slf4j.LoggerFactory;
 
 public class Utils {
     private static final Logger log = LoggerFactory.getLogger(Utils.class);
+
+    public static Executor directExecutor() {
+        return new Executor() {
+            @Override
+            public void execute(Runnable command) {
+                command.run();
+            }
+        };
+    }
 
     public static ExecutorService getSingleThreadExecutor(String name) {
         final ThreadFactory threadFactory = new ThreadFactoryBuilder()
@@ -217,13 +227,13 @@ public class Utils {
         }
     }
 
-    public static void deleteDirectory(File dir)  {
-            File[] files = dir.listFiles();
-            if(files != null) {
-                for (final File file : files) {
-                    deleteDirectory(file);
-                }
+    public static void deleteDirectory(File dir) {
+        File[] files = dir.listFiles();
+        if (files != null) {
+            for (final File file : files) {
+                deleteDirectory(file);
             }
-            dir.delete();
+        }
+        dir.delete();
     }
 }
