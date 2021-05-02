@@ -46,9 +46,8 @@ public class TorServerSocket extends ServerSocket {
     private static final Logger log = LoggerFactory.getLogger(TorServerSocket.class);
 
     private final TorEventHandler eventHandler = new TorEventHandler();
-    ;
     private final String torDirPath;
-    private final TorControlConnection torControlConnection;
+    private final TorController torController;
 
     @Nullable
     private OnionAddress onionAddress;
@@ -56,10 +55,10 @@ public class TorServerSocket extends ServerSocket {
     private ExecutorService executor;
 
     public TorServerSocket(String torDirPath,
-                           TorControlConnection torControlConnection) throws IOException {
+                           TorController torController) throws IOException {
         this.torDirPath = torDirPath;
-        this.torControlConnection = torControlConnection;
-        torControlConnection.setEventHandler(eventHandler);
+        this.torController = torController;
+        torController.setEventHandler(eventHandler);
     }
 
     public CompletableFuture<OnionAddress> bindAsync(int hiddenServicePort) {
@@ -106,9 +105,9 @@ public class TorServerSocket extends ServerSocket {
         TorControlConnection.CreateHiddenServiceResult result;
         if (privKeyFile.exists()) {
             String privateKey = Utils.readFromFile(privKeyFile);
-            result = torControlConnection.createHiddenService(hiddenServicePort, localPort, privateKey);
+            result = torController.createHiddenService(hiddenServicePort, localPort, privateKey);
         } else {
-            result = torControlConnection.createHiddenService(hiddenServicePort, localPort);
+            result = torController.createHiddenService(hiddenServicePort, localPort);
         }
 
         if (!hostNameFile.exists()) {
@@ -144,7 +143,7 @@ public class TorServerSocket extends ServerSocket {
 
         if (onionAddress != null) {
             eventHandler.removeHiddenServiceReadyListener(onionAddress.getServiceId());
-            torControlConnection.destroyHiddenService(onionAddress.getServiceId());
+            torController.destroyHiddenService(onionAddress.getServiceId());
         }
     }
 

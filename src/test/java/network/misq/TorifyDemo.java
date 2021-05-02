@@ -39,10 +39,10 @@ import org.slf4j.LoggerFactory;
 
 
 import misq.torify.OnionAddress;
+import misq.torify.TorController;
 import misq.torify.TorServerSocket;
 import misq.torify.Torify;
 import misq.torify.Utils;
-import net.freehaven.tor.control.TorControlConnection;
 
 public class TorifyDemo {
     private static final Logger log = LoggerFactory.getLogger(TorifyDemo.class);
@@ -56,8 +56,8 @@ public class TorifyDemo {
     private static void useBlockingAPI(String torDirPath) {
         try {
             Torify torify = new Torify(torDirPath);
-            TorControlConnection torControlConnection = torify.start();
-            TorServerSocket torServerSocket = startServer(torDirPath, torControlConnection);
+            TorController torController=   torify.start();
+            TorServerSocket torServerSocket = startServer(torDirPath, torController);
             OnionAddress onionAddress = torServerSocket.getOnionAddress();
             sendViaSocketFactory(torify, onionAddress);
             sendViaProxy(torify, onionAddress);
@@ -78,12 +78,12 @@ public class TorifyDemo {
                     throwable.printStackTrace();
                     return null;
                 })
-                .thenAccept(torControlConnection -> {
-                    if (torControlConnection == null) {
+                .thenAccept(torController -> {
+                    if (torController == null) {
                         return;
                     }
 
-                    startServerAsync(torDirPath, torControlConnection)
+                    startServerAsync(torDirPath, torController)
                             .exceptionally(throwable -> {
                                 log.error(throwable.toString());
                                 throwable.printStackTrace();
@@ -107,9 +107,9 @@ public class TorifyDemo {
     }
 
     private static TorServerSocket startServer(String torDirPath,
-                                               TorControlConnection torControlConnection) throws IOException, InterruptedException {
+                                               TorController torController) throws IOException, InterruptedException {
         try {
-            TorServerSocket torServerSocket = new TorServerSocket(torDirPath, torControlConnection);
+            TorServerSocket torServerSocket = new TorServerSocket(torDirPath, torController);
             File hsDir = new File(torDirPath, "hiddenservice_2");
             torServerSocket.bind(4000, 9999, hsDir);
             runServer(torServerSocket);
@@ -120,10 +120,10 @@ public class TorifyDemo {
     }
 
     private static CompletableFuture<OnionAddress> startServerAsync(String torDirPath,
-                                                                    TorControlConnection torControlConnection) {
+                                                                    TorController torController) {
         CompletableFuture<OnionAddress> future = new CompletableFuture<>();
         try {
-            TorServerSocket torServerSocket = new TorServerSocket(torDirPath, torControlConnection);
+            TorServerSocket torServerSocket = new TorServerSocket(torDirPath, torController);
             File hsDir = new File(torDirPath, "hiddenservice_3");
             torServerSocket
                     .bindAsync(3000, 4444, hsDir)

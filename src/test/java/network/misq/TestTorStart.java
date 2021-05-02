@@ -60,8 +60,8 @@ public class TestTorStart {
                     mainThread.interrupt();
                     return null;
                 })
-                .thenAccept(torControlConnection -> {
-                    if (torControlConnection == null) {
+                .thenAccept(torController -> {
+                    if (torController == null) {
                         return;
                     }
                     fail();
