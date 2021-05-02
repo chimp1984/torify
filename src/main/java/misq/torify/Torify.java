@@ -69,7 +69,6 @@ public class Torify {
     private static final Logger log = LoggerFactory.getLogger(Torify.class);
     public final static String TOR_SERVICE_VERSION = "0.1.0";
 
-    private final TorEventHandler eventHandler = new TorEventHandler();
     private final List<String> bridgeConfig = new ArrayList<>();
     private final String torDirPath;
     private final File torDir;
@@ -82,7 +81,9 @@ public class Torify {
     private final File cookieFile;
     private final OsType osType;
 
+    @Nullable
     private TorControlConnection torControlConnection;
+    @Nullable
     private Socket controlSocket;
     private volatile boolean shutdownRequested;
     @Nullable
@@ -136,22 +137,23 @@ public class Torify {
             } finally {
                 controlSocket = null;
                 torControlConnection = null;
+                startupExecutor = null;
             }
             log.info("Shutdown Tor completed");
         }
     }
 
-    public CompletableFuture<Boolean> startAsync() {
+    public CompletableFuture<TorControlConnection> startAsync() {
         return startAsync(getStartupExecutor());
     }
 
-    public CompletableFuture<Boolean> startAsync(Executor executor) {
-        CompletableFuture<Boolean> future = new CompletableFuture<>();
+    public CompletableFuture<TorControlConnection> startAsync(Executor executor) {
+        CompletableFuture<TorControlConnection> future = new CompletableFuture<>();
         checkArgument(!shutdownRequested, "shutdown already requested");
         executor.execute(() -> {
             try {
                 start();
-                future.complete(true);
+                future.complete(torControlConnection);
             } catch (IOException | InterruptedException e) {
                 deleteVersionFile();
                 future.completeExceptionally(e);
@@ -161,7 +163,7 @@ public class Torify {
     }
 
     // Blocking start
-    public void start() throws IOException, InterruptedException {
+    public TorControlConnection start() throws IOException, InterruptedException {
         checkArgument(!shutdownRequested, "shutdown already requested");
         long ts = System.currentTimeMillis();
         maybeCleanupCookieFile();
@@ -188,6 +190,7 @@ public class Torify {
         listenForBootstrapComplete();
         log.info("Bootstrap complete");
         log.info(">>>>>> Starting Tor took {} ms", System.currentTimeMillis() - ts);
+        return torControlConnection;
     }
 
     public SocksSocket getSocksSocket(String remoteHost, int remotePort, @Nullable String streamId) throws IOException {
@@ -260,14 +263,6 @@ public class Torify {
             e.printStackTrace();
         }
         return socks5Proxy;
-    }
-
-    public TorControlConnection getTorControlConnection() {
-        return torControlConnection;
-    }
-
-    public TorEventHandler getEventHandler() {
-        return eventHandler;
     }
 
     public File getTorDir() {
@@ -449,7 +444,6 @@ public class Torify {
         TorControlConnection connection = new TorControlConnection(controlSocket);
         log.debug("authenticate cookieFile: {}", cookieFile);
         connection.authenticate(Utils.asBytes(cookieFile));
-        connection.setEventHandler(eventHandler);
         connection.setEvents(Constants.EVENTS);
         connection.takeOwnership();
         connection.resetConf(Constants.OWNER);

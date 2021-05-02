@@ -45,23 +45,29 @@ import net.freehaven.tor.control.TorControlConnection;
 public class TorServerSocket extends ServerSocket {
     private static final Logger log = LoggerFactory.getLogger(TorServerSocket.class);
 
-    private final Torify torify;
+    private final TorEventHandler eventHandler = new TorEventHandler();
+    ;
+    private final String torDirPath;
+    private final TorControlConnection torControlConnection;
+
     @Nullable
     private OnionAddress onionAddress;
     @Nullable
     private ExecutorService executor;
 
-    public TorServerSocket(Torify torify) throws IOException {
-        this.torify = torify;
+    public TorServerSocket(String torDirPath,
+                           TorControlConnection torControlConnection) throws IOException {
+        this.torDirPath = torDirPath;
+        this.torControlConnection = torControlConnection;
+        torControlConnection.setEventHandler(eventHandler);
     }
-
 
     public CompletableFuture<OnionAddress> bindAsync(int hiddenServicePort) {
         return bindAsync(hiddenServicePort, hiddenServicePort);
     }
 
     public CompletableFuture<OnionAddress> bindAsync(int hiddenServicePort, int localPort) {
-        return bindAsync(hiddenServicePort, localPort, new File(torify.getTorDir(), HS_DIR));
+        return bindAsync(hiddenServicePort, localPort, new File(torDirPath, HS_DIR));
     }
 
     public CompletableFuture<OnionAddress> bindAsync(int hiddenServicePort, int localPort, File hsDir) {
@@ -97,7 +103,6 @@ public class TorServerSocket extends ServerSocket {
         File privKeyFile = new File(hsDir.getCanonicalPath(), PRIV_KEY);
         Utils.makeDirs(hsDir);
 
-        TorControlConnection torControlConnection = torify.getTorControlConnection();
         TorControlConnection.CreateHiddenServiceResult result;
         if (privKeyFile.exists()) {
             String privateKey = Utils.readFromFile(privKeyFile);
@@ -121,7 +126,7 @@ public class TorServerSocket extends ServerSocket {
 
         log.debug("Start publishing hidden service {}", onionAddress);
         CountDownLatch latch = new CountDownLatch(1);
-        torify.getEventHandler().putHiddenServiceReadyListener(serviceId, () -> {
+        eventHandler.putHiddenServiceReadyListener(serviceId, () -> {
             try {
                 super.bind(new InetSocketAddress(LOCALHOST, localPort));
                 log.info(">> TorServerSocket ready. Took {} ms", System.currentTimeMillis() - ts);
@@ -138,8 +143,8 @@ public class TorServerSocket extends ServerSocket {
         super.close();
 
         if (onionAddress != null) {
-            torify.getEventHandler().removeHiddenServiceReadyListener(onionAddress.getServiceId());
-            torify.getTorControlConnection().destroyHiddenService(onionAddress.getServiceId());
+            eventHandler.removeHiddenServiceReadyListener(onionAddress.getServiceId());
+            torControlConnection.destroyHiddenService(onionAddress.getServiceId());
         }
     }
 

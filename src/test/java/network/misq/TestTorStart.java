@@ -58,10 +58,10 @@ public class TestTorStart {
                 .exceptionally(throwable -> {
                     assertFalse(versionFile.exists());
                     mainThread.interrupt();
-                    return false;
+                    return null;
                 })
-                .thenAccept(success -> {
-                    if (!success) {
+                .thenAccept(torControlConnection -> {
+                    if (torControlConnection == null) {
                         return;
                     }
                     fail();

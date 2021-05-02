@@ -42,21 +42,22 @@ import misq.torify.OnionAddress;
 import misq.torify.TorServerSocket;
 import misq.torify.Torify;
 import misq.torify.Utils;
+import net.freehaven.tor.control.TorControlConnection;
 
 public class TorifyDemo {
     private static final Logger log = LoggerFactory.getLogger(TorifyDemo.class);
 
     public static void main(String[] args) {
         String torDirPath = Utils.getUserDataDir() + "/TorifyDemo";
-      //  useBlockingAPI(torDirPath);
-         useNonBlockingAPI(torDirPath);
+        //  useBlockingAPI(torDirPath);
+        useNonBlockingAPI(torDirPath);
     }
 
     private static void useBlockingAPI(String torDirPath) {
         try {
             Torify torify = new Torify(torDirPath);
-            torify.start();
-            TorServerSocket torServerSocket = startServer(torify);
+            TorControlConnection torControlConnection = torify.start();
+            TorServerSocket torServerSocket = startServer(torDirPath, torControlConnection);
             OnionAddress onionAddress = torServerSocket.getOnionAddress();
             sendViaSocketFactory(torify, onionAddress);
             sendViaProxy(torify, onionAddress);
@@ -75,14 +76,14 @@ public class TorifyDemo {
                 .exceptionally(throwable -> {
                     log.error(throwable.toString());
                     throwable.printStackTrace();
-                    return false;
+                    return null;
                 })
-                .thenAccept(success -> {
-                    if (!success) {
+                .thenAccept(torControlConnection -> {
+                    if (torControlConnection == null) {
                         return;
                     }
 
-                    startServerAsync(torify)
+                    startServerAsync(torDirPath, torControlConnection)
                             .exceptionally(throwable -> {
                                 log.error(throwable.toString());
                                 throwable.printStackTrace();
@@ -105,10 +106,11 @@ public class TorifyDemo {
         }
     }
 
-    private static TorServerSocket startServer(Torify torify) throws IOException, InterruptedException {
+    private static TorServerSocket startServer(String torDirPath,
+                                               TorControlConnection torControlConnection) throws IOException, InterruptedException {
         try {
-            TorServerSocket torServerSocket = new TorServerSocket(torify);
-            File hsDir = new File(torify.getTorDir(), "hiddenservice_2");
+            TorServerSocket torServerSocket = new TorServerSocket(torDirPath, torControlConnection);
+            File hsDir = new File(torDirPath, "hiddenservice_2");
             torServerSocket.bind(4000, 9999, hsDir);
             runServer(torServerSocket);
             return torServerSocket;
@@ -117,11 +119,12 @@ public class TorifyDemo {
         }
     }
 
-    private static CompletableFuture<OnionAddress> startServerAsync(Torify torify) {
+    private static CompletableFuture<OnionAddress> startServerAsync(String torDirPath,
+                                                                    TorControlConnection torControlConnection) {
         CompletableFuture<OnionAddress> future = new CompletableFuture<>();
         try {
-            TorServerSocket torServerSocket = new TorServerSocket(torify);
-            File hsDir = new File(torify.getTorDir(), "hiddenservice_3");
+            TorServerSocket torServerSocket = new TorServerSocket(torDirPath, torControlConnection);
+            File hsDir = new File(torDirPath, "hiddenservice_3");
             torServerSocket
                     .bindAsync(3000, 4444, hsDir)
                     .whenComplete((onionAddress, throwable) -> {
