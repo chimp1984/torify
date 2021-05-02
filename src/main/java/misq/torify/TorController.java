@@ -27,6 +27,9 @@ import org.slf4j.LoggerFactory;
 
 import javax.annotation.Nullable;
 
+import static com.google.common.base.Preconditions.checkArgument;
+import static com.google.common.base.Preconditions.checkNotNull;
+
 
 
 import net.freehaven.tor.control.TorControlConnection;
@@ -39,12 +42,13 @@ public class TorController {
     private TorControlConnection torControlConnection;
     @Nullable
     private Socket controlSocket;
+    private boolean isStarted;
 
     TorController(File cookieFile) {
         this.cookieFile = cookieFile;
     }
 
-    void startControlConnection(int controlPort) throws IOException {
+    void start(int controlPort) throws IOException {
         controlSocket = new Socket("127.0.0.1", controlPort);
         torControlConnection = new TorControlConnection(controlSocket);
         torControlConnection.authenticate(Utils.asBytes(cookieFile));
@@ -66,6 +70,7 @@ public class TorController {
                 }
             }
         }
+        isStarted = true;
     }
 
     void shutdown() {
@@ -93,10 +98,8 @@ public class TorController {
     }
 
     int getProxyPort() throws IOException {
-        if (torControlConnection == null) {
-            throw new NullPointerException("torControlConnection must not be null");
-        }
-        String socksInfo = torControlConnection.getInfo(Constants.NET_LISTENERS_SOCKS);
+        checkArgument(isStarted, "Startup not completed");
+        String socksInfo = checkNotNull(torControlConnection).getInfo(Constants.NET_LISTENERS_SOCKS);
         socksInfo = socksInfo.replace("\"", "");
         String[] tokens = socksInfo.split(":");
         String port = tokens[tokens.length - 1];
@@ -104,33 +107,25 @@ public class TorController {
     }
 
     void setEventHandler(TorEventHandler eventHandler) {
-        if (torControlConnection == null) {
-            throw new NullPointerException("torControlConnection must not be null");
-        }
-        torControlConnection.setEventHandler(eventHandler);
+        checkArgument(isStarted, "Startup not completed");
+        checkNotNull(torControlConnection).setEventHandler(eventHandler);
     }
 
     TorControlConnection.CreateHiddenServiceResult createHiddenService(int hiddenServicePort,
                                                                        int localPort) throws IOException {
-        if (torControlConnection == null) {
-            throw new NullPointerException("torControlConnection must not be null");
-        }
-        return torControlConnection.createHiddenService(hiddenServicePort, localPort);
+        checkArgument(isStarted, "Startup not completed");
+        return checkNotNull(torControlConnection).createHiddenService(hiddenServicePort, localPort);
     }
 
     TorControlConnection.CreateHiddenServiceResult createHiddenService(int hiddenServicePort,
                                                                        int localPort,
                                                                        String privateKey) throws IOException {
-        if (torControlConnection == null) {
-            throw new NullPointerException("torControlConnection must not be null");
-        }
-        return torControlConnection.createHiddenService(hiddenServicePort, localPort, privateKey);
+        checkArgument(isStarted, "Startup not completed");
+        return checkNotNull(torControlConnection).createHiddenService(hiddenServicePort, localPort, privateKey);
     }
 
     void destroyHiddenService(String serviceId) throws IOException {
-        if (torControlConnection == null) {
-            throw new NullPointerException("torControlConnection must not be null");
-        }
-        torControlConnection.destroyHiddenService(serviceId);
+        checkArgument(isStarted, "Startup not completed");
+        checkNotNull(torControlConnection).destroyHiddenService(serviceId);
     }
 }

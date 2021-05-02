@@ -14,9 +14,11 @@
  * You should have received a copy of the GNU Affero General Public License
  * along with Bisq. If not, see <http://www.gnu.org/licenses/>.
  */
+
 package misq.torify;
 
 import java.io.IOException;
+
 import java.util.Scanner;
 
 public enum OsType {
@@ -92,7 +94,7 @@ public enum OsType {
             case LNX64:
                 return "tor"; //todo
             case MACOS:
-                return "/native/osx/torrc.native";
+                return "/native/osx/" + Constants.TORRC_NATIVE;
             default:
                 throw new RuntimeException("We don't support Tor on this OS");
         }
