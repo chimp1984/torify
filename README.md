@@ -1,7 +1,6 @@
 # Torify library
 
-A library for using Tor as Socks5 proxy for tunneling network traffic.
-See `misq.TorifyDemo.java` in the test package for usage.
+Code base moved to https://github.com/chimp1984/misq/tree/master/torify/src/main/java/misq/torify for easy of development.
 
 Based and derived from work of:
 - https://github.com/JesusMcCloud/netlayer,
