@@ -3,11 +3,11 @@
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
 
-    <groupId>network.misq</groupId>
-    <artifactId>torify</artifactId>
+    <groupId>misq</groupId>
+    <artifactId>tor-binaries</artifactId>
     <version>0.6.8.4</version>
 
-    <name>Torify</name>
+    <name>Tor-binaries</name>
 
     <properties>
         <java.version>1.10</java.version>
@@ -24,18 +24,6 @@
     </repositories>
 
     <dependencies>
-        <dependency>
-            <groupId>com.github.ravn</groupId>
-            <artifactId>jsocks</artifactId>
-            <version>567e1cd</version>
-        </dependency>
-
-        <dependency>
-            <groupId>com.github.JesusMcCloud</groupId>
-            <artifactId>jtorctl</artifactId>
-            <version>1.5</version>
-        </dependency>
-
         <dependency>
             <groupId>com.github.bisq-network.tor-binary</groupId>
             <artifactId>tor-binary-geoip</artifactId>
@@ -60,51 +48,6 @@
             <groupId>com.github.bisq-network.tor-binary</groupId>
             <artifactId>tor-binary-windows</artifactId>
             <version>${tor-binary.version}</version>
-        </dependency>
-
-        <dependency>
-            <groupId>org.tukaani</groupId>
-            <artifactId>xz</artifactId>
-            <version>1.6</version>
-        </dependency>
-
-        <dependency>
-            <groupId>org.apache.commons</groupId>
-            <artifactId>commons-compress</artifactId>
-            <version>1.18</version>
-        </dependency>
-        <dependency>
-            <groupId>com.google.code.findbugs</groupId>
-            <artifactId>jsr305</artifactId>
-            <version>3.0.2</version>
-        </dependency>
-        <dependency>
-            <groupId>com.google.guava</groupId>
-            <artifactId>guava</artifactId>
-            <version>28.2-jre</version>
-        </dependency>
-
-        <dependency>
-            <groupId>org.slf4j</groupId>
-            <artifactId>slf4j-api</artifactId>
-            <version>1.7.30</version>
-        </dependency>
-        <dependency>
-            <groupId>ch.qos.logback</groupId>
-            <artifactId>logback-core</artifactId>
-            <version>1.2.3</version>
-        </dependency>
-        <dependency>
-            <groupId>ch.qos.logback</groupId>
-            <artifactId>logback-classic</artifactId>
-            <version>1.2.3</version>
-        </dependency>
-
-        <dependency>
-            <groupId>junit</groupId>
-            <artifactId>junit</artifactId>
-            <version>4.12</version>
-            <scope>test</scope>
         </dependency>
     </dependencies>
 
